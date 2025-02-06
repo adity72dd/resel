@@ -54,7 +54,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "🔹 Use /attack <target_ip> <port> to launch an attack.\n"
         "🔹 Join our channel for updates:\n"
         f"[🔗 Click Here]({CHANNEL_LINK})\n\n"
-        "💻 **Developed by**: @" + OWNER_USERNAME
+        "💻 **Developed by**: " + f"@{OWNER_USERNAME}"
     )
 
     if os.path.exists(CHANNEL_LOGO):
