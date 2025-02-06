@@ -17,7 +17,7 @@ DEFAULT_DURATION = 200  # Default attack duration
 last_attack_time = {}
 
 # Set a timeout in seconds (e.g., 60 seconds between attacks)
-ATTACK_TIMEOUT = 300  # Example: 60 seconds timeout
+ATTACK_TIMEOUT = 260  # Example: 60 seconds timeout
 
 users = {}
 admins = {}
