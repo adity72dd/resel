@@ -1,12 +1,7 @@
 [
     {
-        "ip": "192.168.1.10",
-        "username": "root",
-        "password": "password123"
+        "ip": "140.82.46.28",
+        "username": "master_ahhyjwvsbv",
+        "password": "3Pj79GFtneCJ"
     },
-    {
-        "ip": "192.168.1.11",
-        "username": "root",
-        "password": "password456"
-    }
 ]
