@@ -11,13 +11,13 @@ USER_FILE = "users.json"
 ADMIN_FILE = "admins.json"
 DEFAULT_THREADS = 2900
 DEFAULT_PACKET = 20
-DEFAULT_DURATION = 200  # Default attack duration
+DEFAULT_DURATION = 100  # Default attack duration
 
 # Store the last attack time for each user (in seconds)
 last_attack_time = {}
 
 # Set a timeout in seconds (e.g., 60 seconds between attacks)
-ATTACK_TIMEOUT = 260  # Example: 60 seconds timeout
+ATTACK_TIMEOUT = 150  # Example: 60 seconds timeout
 
 users = {}
 admins = {}
