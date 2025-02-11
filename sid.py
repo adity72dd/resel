@@ -8,8 +8,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from config import BOT_TOKEN, ADMIN_IDS, OWNER_USERNAME
 
 USER_FILE = "users.json"
-DEFAULT_THREADS = 2000
-DEFAULT_PACKET = 12
+DEFAULT_THREADS = 100
+DEFAULT_PACKET = 10
 DEFAULT_DURATION = 180  # Default attack duration
 BAN_DURATION = 1000  # Ban duration (10 mi22nutes)
 
